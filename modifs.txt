@@ -1,0 +1,54 @@
+1)
+Bouger la barriere de la fonction close_file qui n'est appelée que par le processus
+Master et donc va deadlock les autres processus. Mettre la barriere avant
+ la condition et l'appel de cette fonction.
+
+//wait all before closing
+MPI_Barrier(MPI_COMM_WORLD);
+
+2)
+Dans lbm_struct.c
+
+La fonction Mesh_init() n'alloue pas le tableau mesh->cells mais y place jsute null
+Il suffit de commenter cette ligne et decommenter la ligne au dessus.
+Cet erreur fait que lorsque l'on voulait ecrire dans le tableau, le programme crash
+car le tableau n'était pas alloué.
+
+3)
+Ajout du -O3 dans les options de compilation afin de laisser le compilateur optimiser
+au maximum le code.
+
+4)
+Supression de l'appel à un sleep(1) dans lbm_comm.c dans la fonction lbm_comm_ghost_exchange()
+En effet tout à la fin de cette fonction ce trouve la fonction 	FLUSH_INOUT()
+Or cette fonction est definie dans le fichier lbm_config.h qui est appelé par le fichier
+lbm_struct.h qui est appelé par le fichier lbm_comm.h
+
+Donc cette fonction est aliasée dans lbm_config.h par la ligne:
+#define FLUSH_INOUT() __FLUSH_INOUT__
+Donc quand FLUSH_INOUT() est appelé, __FLUSH_INOUT__ est écrit à la place au moment de la compilation.
+
+Or __FLUSH_INOUT__ est aliasé quelques lignes au dessus par:
+#define __FLUSH_INOUT__ concat(s,l,e,e,p)(1)
+
+Et concat() est aliasée aussi par la ligne suivante:
+#define concat(a,b,c,d,e) a##b##c##d##e
+a##b##c##d##e dit au compilateur de remplacer concat(a,b,c,d,e) par la concatenation
+de ces elements et ecrit donc abcde.
+
+Ainsi FLUSH_INOUT() est remplacer à la compilation par sleep(1) ce qui provoque un temps d'attente
+de 1 seconde par tout les processus en fin de fonction de communication, or cette attente
+est non necessaire car tout les processus arrive en meme temps ici due à l'utilisation d'un MPI_Barrier()
+
+
+5)
+Avec la suppression des printf (et de print_config() qui appelle des printf aussi)
+pour l'affichage de la progression dans la fonction main()
+on gagne un temps non negligeable car un printf est une fonction lourde en temps de calcul
+et est non nécéssaire. Sa supression fait gagner presque 2 seconde dans l'execution.
+
+6)
+LES COMMS
+
+7)
+-DNDEBUG pour enlever le print des comm (definie NDEBUG et empeche l'appel à 	lbm_comm_print( mesh_comm ) dans lbm_comm_init())
